@@ -18,7 +18,37 @@ Upload your Excel file containing product models. This tool will:
 uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
 
 @st.cache_data
+@st.cache_data
 def search_and_scrape(model, brand):
+    if not isinstance(brand, str) or not isinstance(model, str):
+        return [], ""
+
+    search_url = ""
+    if brand.lower() == "gorenje":
+        search_url = f"https://www.gorenje.com/search?q={model}"
+    elif brand.lower() == "elba":
+        search_url = f"https://www.elba-cookers.com/en/search-results?searchword={model}"
+    else:
+        return [], ""
+
+    headers = {"User-Agent": "Mozilla/5.0"}
+    response = requests.get(search_url, headers=headers)
+    soup = BeautifulSoup(response.text, 'html.parser')
+
+    product_page = soup.find('a', href=True)
+    if not product_page:
+        return [], ""
+
+    product_url = product_page['href'] if product_page['href'].startswith('http') else f"https://{brand.lower()}.com{product_page['href']}"
+    prod_resp = requests.get(product_url, headers=headers)
+    prod_soup = BeautifulSoup(prod_resp.text, 'html.parser')
+
+    images = [img['src'] for img in prod_soup.find_all('img', src=True) if model.lower() in img['src'].lower()]
+    description_tag = prod_soup.find(['p', 'div'], text=True)
+    description = description_tag.get_text(strip=True) if description_tag else ""
+
+    return images, description
+
     search_url = ""
     if brand.lower() == "gorenje":
         search_url = f"https://www.gorenje.com/search?q={model}"
