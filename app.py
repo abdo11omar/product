@@ -1,68 +1,66 @@
-# Git Setup Commands
-
-git init
-git add .
-git commit -m "Initial commit"
-git branch -M main
-git remote add origin https://github.com/abdo11omar/product.git
-git push -u origin main --force
-
-# Web App Code (Streamlit - app.py)
-
 import streamlit as st
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 import re
-import csv
-import os
 
-# Caching for faster development
 @st.cache_data
-
 def search_and_scrape(model, brand):
+    headers = {"User-Agent": "Mozilla/5.0"}
     search_url = ""
+
     if brand.lower() == "gorenje":
         search_url = f"https://www.gorenje.com/search?q={model}"
+        base_url = "https://www.gorenje.com"
     elif brand.lower() == "elba":
         search_url = f"https://www.elba-cookers.com/search?q={model}"
+        base_url = "https://www.elba-cookers.com"
     else:
         return [], ""
 
-    headers = {"User-Agent": "Mozilla/5.0"}
     resp = requests.get(search_url, headers=headers)
     soup = BeautifulSoup(resp.text, "html.parser")
 
-    links = soup.find_all("a", href=True)
     product_page = None
-    for link in links:
-        if model.lower() in link["href"].lower():
-            product_page = link["href"]
+    for a in soup.find_all("a", href=True):
+        if model.lower() in a["href"].lower():
+            product_page = a["href"]
             break
 
     if not product_page:
         return [], ""
 
     if not product_page.startswith("http"):
-        if brand.lower() == "gorenje":
-            product_page = "https://www.gorenje.com" + product_page
-        elif brand.lower() == "elba":
-            product_page = "https://www.elba-cookers.com" + product_page
+        product_page = base_url + product_page
 
     prod_resp = requests.get(product_page, headers=headers)
     prod_soup = BeautifulSoup(prod_resp.text, "html.parser")
 
+    # استخراج الصور من <img> tags
     imgs = prod_soup.find_all("img")
-    img_urls = [img["src"] for img in imgs if "src" in img.attrs and any(x in img["src"] for x in [".jpg", ".png"])]
-    img_urls = list(set([i if i.startswith("http") else f"https:{i}" for i in img_urls]))
+    img_urls = []
+    for img in imgs:
+        src = img.get("src") or img.get("data-src")
+        if src and any(ext in src for ext in [".jpg", ".png", ".jpeg"]):
+            full_url = src if src.startswith("http") else f"https:{src}"
+            img_urls.append(full_url)
 
-    desc_tag = prod_soup.find("meta", {"name": "description"})
-    desc = desc_tag["content"] if desc_tag and "content" in desc_tag.attrs else ""
+    img_urls = list(set(img_urls))  # إزالة التكرارات
+
+    # استخراج وصف المنتج من meta أو paragraph
+    desc = ""
+    meta_desc = prod_soup.find("meta", {"name": "description"})
+    if meta_desc and meta_desc.get("content"):
+        desc = meta_desc["content"]
+    else:
+        p = prod_soup.find("p")
+        desc = p.text.strip() if p else ""
 
     return img_urls, desc
 
-# Streamlit UI
+# واجهة Streamlit
 st.title("🛒 Shopify Product Scraper for Gorenje & Elba")
+
 st.markdown("""
 Upload your Excel file containing product models. This tool will:
 
@@ -80,20 +78,23 @@ if uploaded_file:
     df["Description"] = ""
 
     for i, row in df.iterrows():
-        model = str(row["Model"]) if "Model" in row else str(row[0])
-        brand = str(row["Brand"]) if "Brand" in row else str(row[1])
-        st.write(f"🔎 Scraping for {model} ({brand})")
+        model = str(row.get("Model", row[0]))
+        brand = str(row.get("Brand", row[1]))
+
+        st.info(f"🔎 Scraping for {model} ({brand}) ...")
+
         images, desc = search_and_scrape(model, brand)
+
         df.at[i, "Images"] = ", ".join(images)
         df.at[i, "Description"] = desc
 
+        # عرض الصور داخل Streamlit
+        if images:
+            st.image(images[0], width=300, caption=f"{model}")
+        else:
+            st.warning("❌ No images found.")
+
     st.success("✅ Scraping Done!")
+
     csv = df.to_csv(index=False).encode('utf-8')
     st.download_button("📥 Download Shopify CSV", csv, file_name="shopify_products.csv", mime="text/csv")
-
-# Requirements.txt
-# streamlit
-# pandas
-# openpyxl
-# beautifulsoup4
-# requests
