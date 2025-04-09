@@ -10,7 +10,7 @@ def search_and_scrape(model, brand):
     search_url = ""
 
     if brand.lower() == "gorenje":
-        search_url = f"https://www.gorenje.com/search?q={model}"
+        search_url = f"https://www.eg.gorenje.com/en/search?q={model}"
         base_url = "https://www.gorenje.com"
     elif brand.lower() == "elba":
         search_url = f"https://www.elba-cookers.com/search?q={model}"
